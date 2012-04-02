@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen" />
+    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen" />
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
+
+    <title>Cluster-commander by ibnfirnas</title>
+  </head>
+
+  <body>
+
+    <header>
+      <div class="container">
+        <h1>Cluster-commander</h1>
+        <h2>Cluster management tool: parallel SSH/SCP loop, dynamic and static node lists, other useful stuff.</h2>
+
+        <section id="downloads">
+          <a href="https://github.com/ibnfirnas/cluster-commander/zipball/master" class="btn">Download as .zip</a>
+          <a href="https://github.com/ibnfirnas/cluster-commander/tarball/master" class="btn">Download as .tar.gz</a>
+          <a href="https://github.com/ibnfirnas/cluster-commander" class="btn btn-github"><span class="icon"></span>View on GitHub</a>
+        </section>
+      </div>
+    </header>
+
+    <div class="container">
+      <section id="main_content">
+        <h1>Cluster Commander</h1>
+
+<p>Cluster management tool. Concurrently runs commands on, and
+uploads/downloads files to groups of nodes.</p>
+
+<p><a href="http://travis-ci.org/ibnfirnas/cluster-commander"><img src="https://secure.travis-ci.org/ibnfirnas/cluster-commander.png?branch=master" alt="Build Status"></a></p>
+
+<h2>Usage</h2>
+
+<pre><code>commander   [OPTIONS] [exec]    [COMMAND_STRING]
+commander   [OPTIONS] [put|get] [FROM_PATH] [TO_PATH]
+
+SHORT     LONG              DESCRIPTION                    DEFAULTS TO
+-------------------------------------------------------------------------
+-u        --user            User                           &lt;CURRENT_USER&gt;
+-g        --group           Nodes group                    pbs
+-s        --ssh             SSH provider ('os' | 'otp')    otp
+-q        --quiet           Enable SSH quiet mode.         &lt;OFF&gt;
+-t        --host-timeout    Host timeout                   0 (infinity)
+-T        --global-timeout  Global timeout                 0 (infinity)
+-p        --port            SSH port number                22
+-d        --save-data-to    Directory to save outputs to.   ~/.cluster-commander/outputs
+-w        --workers         Number of concurrent workers.  OS SSH: 25
+                                                           OTP SSH: &lt;NUMBER_OF_NODES&gt;
+
+-a        --try-all-nodes   Attempt to connect to all      &lt;OFF&gt;
+                            nodes, regardless of their
+                            current state (only relevant
+                            for the built-in, dynamic
+                            "pbs" group).
+
+-n        --nodes           Nodes list                     &lt;EMPTY&gt;
+                            (whitespace-separated).
+                            Overrides all other sources
+                            of nodes.
+
+-f      --filter-nodes      INclude matched RegEx pattern, ""
+                            to filter each node NAME
+                            through.
+
+-F      --filter-outputs    EXclude matched RegEx pattern, ""
+                            to filter each OUTPUT through.
+                            (Very useful for things like
+                            suppression of mendatory banners
+                            without loosing useful stderr
+                            output from OS's `ssh` command
+                            (as you do with '-q' option)).
+</code></pre>
+
+<p>If the target command contains options itself, it must be quoted to prevent
+commander from attempting to interpret those options.</p>
+
+<h3>Examples</h3>
+
+<div class="highlight">
+<pre><span class="c"># Use quotes when remote command contains options</span>
+<span class="nv">$ </span>commander ls /
+<span class="nv">$ </span>commander <span class="s1">'ls -la /'</span>
+
+<span class="c"># Get uptime for all hosts, with a 2-second host timeout and no global timeout</span>
+<span class="nv">$ </span>commander -t 2 -a uptime
+
+<span class="c"># Download /etc/hosts from all available nodes in group "compute_nodes_01"</span>
+<span class="nv">$ </span>commander -g compute_nodes_01 get /etc/hosts ./tmp
+<span class="nv">$ </span>ls ./tmp/*/*
+./tmp/node-01-01/hosts  ./tmp/node-01-03/hosts  ./tmp/node-01-05/hosts
+./tmp/node-01-07/hosts  ./tmp/node-01-09/hosts
+./tmp/node-01-02/hosts  ./tmp/node-01-04/hosts  ./tmp/node-01-06/hosts
+./tmp/node-01-08/hosts  ./tmp/node-01-10/hosts
+
+<span class="c"># Push an identical /etc/hosts file to all available nodes</span>
+<span class="nv">$ </span>commander put ./tmp/etc_hosts /etc/hosts
+
+<span class="c"># Attempt to run a script on all nodes, with a global deadline of 1 minute</span>
+<span class="nv">$ </span>commander -T60 -a /opt/collect-data.sh
+
+<span class="c"># Same as above, but pass an argument to the script</span>
+<span class="nv">$ </span>commander -T60 -a <span class="s1">'/opt/collect-data.sh --somearg'</span>
+</pre>
+</div>
+
+
+<h2>Bootstrap</h2>
+
+<h3>Prerequisites</h3>
+
+<ul>
+<li>Erlang R13+ (developing on R14B03, testing on R14B02-04, R15B)</li>
+<li>Git</li>
+<li>GNU Make (not REALLY needed, but simpler to build if you have it)</li>
+</ul><h3>Download, build and install</h3>
+
+<div class="highlight">
+<pre><span class="nv">$ </span>git clone git://github.com/ibnfirnas/cluster-commander.git
+<span class="nv">$ </span><span class="nb">cd </span>cluster-commander
+<span class="nv">$ </span>make
+<span class="nv">$ </span>cp ./bin/commander /some/dir/in/your/path/
+</pre>
+</div>
+
+
+<h3>Configure nodes</h3>
+
+<p>By default, reads a list of nodes from <code>pbsnodes</code> command (and skips nodes
+marked as 'down' and/or 'offline', overridden with <code>-a</code> CLI option).</p>
+
+<p>Alternatively (or additionally), static groups of nodes can be defined in
+<code>~/.cluster-commander/groups.json</code>, for example:</p>
+
+<div class="highlight">
+<pre><span class="p">{</span>
+    <span class="nt">"file_servers"</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">"fs-01"</span><span class="p">,</span>
+        <span class="s2">"fs-02"</span><span class="p">,</span>
+        <span class="s2">"fs-03"</span>
+    <span class="p">],</span>
+
+    <span class="nt">"compute_nodes_01"</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">"node-01-01"</span><span class="p">,</span>
+        <span class="s2">"node-01-02"</span><span class="p">,</span>
+        <span class="s2">"node-01-03"</span>
+    <span class="p">],</span>
+
+    <span class="nt">"compute_nodes_02"</span><span class="p">:</span> <span class="p">[</span>
+        <span class="s2">"node-02-01"</span><span class="p">,</span>
+        <span class="s2">"node-02-02"</span><span class="p">,</span>
+        <span class="s2">"node-02-03"</span>
+    <span class="p">]</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>Group name "all" is reserved. It is used as a built-in meta-group for all nodes
+from all groups defined in groups.json file. This adds a lot of flexibility
+when combined with '-f' option.</p>
+
+<h3>Configure SSH</h3>
+
+<p>Do you already have password-less key-based access to all your nodes?</p>
+
+<ul>
+<li>
+<p>YES: do the following and you're all set:</p>
+
+<div class="highlight">
+<pre><span class="nv">$ </span>mkdir -p ~/.cluster-commander/ssh/
+<span class="nv">$ </span>cp ~/.ssh/id_rsa ~/.cluster-commander/ssh/id_rsa
+</pre>
+</div>
+</li>
+<li>
+<p>NO:</p>
+
+<ul>
+<li>
+<p>Do you have password-protected key-based access to your nodes?</p>
+
+<ul>
+<li>
+<p>YES:</p>
+
+<ul>
+<li>
+<p>you have 3 options:</p>
+
+<ul>
+<li>remove the password from the private key and
+re-evaluate this whole, "Configure SSH" section</li>
+<li>generate a new, password-less key and
+re-evaluate this whole, "Configure SSH" section</li>
+<li>start ssh-agent and use '-s os' CLI option</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>
+<p>NO:</p>
+
+<ul>
+<li>Generate a new key, get it on your nodes somehow and
+re-evaluate this whole, "Configure SSH", section</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul><h4>Note</h4>
+
+<p>If there's just no way that a password-less key is acceptable to you, you can
+just always use '-s os' option to use system's 'ssh' command as the alternative
+back-end (in which case ssh-agent must be up and running already).</p>
+
+<p>Erlang/OTP's SSH app, currently, only supports password-less private keys.
+Because Erlang's focus has been on servers and automation, not interactive use.
+That said, according to Ingela Andin, there's is a solution to that in the
+codebase, it just hasn't yet been ported to the SSH application (due to the
+prior-mentioned priorities).</p>
+
+<h5>SOURCES:</h5>
+
+<ul>
+<li><a href="http://erlang.org/pipermail/erlang-questions/2010-April/050637.html">http://erlang.org/pipermail/erlang-questions/2010-April/050637.html</a></li>
+<li><a href="https://github.com/erlang/otp/tree/master/lib/ssh/src">https://github.com/erlang/otp/tree/master/lib/ssh/src</a></li>
+<li><a href="https://github.com/erlang/otp/tree/master/lib/public_key/src">https://github.com/erlang/otp/tree/master/lib/public_key/src</a></li>
+</ul><h2>Roadmap</h2>
+
+<ul>
+<li><del>Use rebar and manage dependencies, releases, etc.</del></li>
+<li><del>Use getopt and allow overriding defaults (set with macros)</del></li>
+<li><del>Polish executable script</del></li>
+<li><del>node groups</del></li>
+<li><del>manual cluster nodes configs</del></li>
+<li><del>specify individual target nodes on CLI</del></li>
+<li>Accept a (whitespace-delimited) list of nodes from stdin</li>
+<li>
+<p>Organize node-groups configurations into "static" and "dynamic" groups:</p>
+
+<ul>
+<li>Static groups: defined manually, on a per-node basis
+
+<ul>
+<li>Add helper commands to generate and update static groups based
+on defined naming patterns, such as: node-01-01, node-01-02,
+node-02-01, ..., etc</li>
+</ul>
+</li>
+<li>Built-in dynamic groups: built-in parsers for common cluster resource
+managers (with options for node state handling ("down", "offline", etc)):
+
+<ul>
+<li><del>TORQUE/PBS</del></li>
+<li>Disco</li>
+<li>Hadoop</li>
+</ul>
+</li>
+<li>Plug-in dynamic groups: define an external command whose output supplies
+a whitespace-delimited list of nodes</li>
+</ul>
+</li>
+<li><p><del>CLI option to filter nodes through a RegEx pattern</del></p></li>
+<li><p>user-editable config files to override defaults</p></li>
+<li><p><del>sftp support (get/put) via 'scp' command</del></p></li>
+<li><p>sftp support (get/put) via OTP ssh app</p></li>
+<li>
+<p>gated hosts:</p>
+
+<ul>
+<li>chained OS ssh/scp commands?</li>
+<li>setup tunnels?</li>
+</ul>
+</li>
+<li><p>Persistent, interactive sessions</p></li>
+<li>
+<p>common cluster operations scripts:</p>
+
+<ul>
+<li>cleanly shutdown a subset/group of nodes:
+
+<ul>
+<li>cleanly stop current jobs</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>Tests...</p></li>
+<li>
+<p>Test a node's availability based on latency:</p>
+
+<ul>
+<li>ICMP</li>
+<li>SSH</li>
+</ul>
+</li>
+<li><p>Configurable latency threshold parameter(s) to determine whether we consider
+a node "available"</p></li>
+<li><p>Organize how generation of missing keys is handled.</p></li>
+</ul>
+      </section>
+    </div>
+
+    
+  </body>
+</html>
